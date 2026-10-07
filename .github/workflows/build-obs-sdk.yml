@@ -76,12 +76,28 @@ jobs:
         shell: pwsh
         run: |
           Compress-Archive -Path C:\obs-studio\* -DestinationPath C:\obs-sdk-win64.zip -CompressionLevel Optimal
-
-      - name: Release
-        uses: softprops/action-gh-release@v2
+      - name: Upload SDK as artifact
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: obs-${{ inputs.obs_version }}
-          name: OBS Studio ${{ inputs.obs_version }} SDK (Windows x64)
-          files: C:\obs-sdk-win64.zip
-          draft: false
-          prerelease: false
+          name: obs-sdk-win64
+          path: C:\obs-sdk-win64.zip
+
+      - name: Create GitHub release and upload asset
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "obs-${{ inputs.obs_version }}"
+          $name = "OBS Studio ${{ inputs.obs_version }} SDK (Windows x64)"
+
+          for ($i = 1; $i -le 5; $i++) {
+            try {
+              gh release create $tag C:\obs-sdk-win64.zip `
+                --title $name `
+                --notes "Windows x64 SDK for OBS Studio ${{ inputs.obs_version }}"
+              exit 0
+            } catch {
+              if ($i -eq 5) { throw }
+              Start-Sleep -Seconds (5 * $i)
+            }
+          }
