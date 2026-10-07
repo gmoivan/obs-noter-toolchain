@@ -1,0 +1,87 @@
+name: Build OBS Studio SDK
+on:
+  workflow_dispatch:
+    inputs:
+      obs_version:
+        description: 'OBS Version Tag (e.g., 32.2.1)'
+        required: true
+        default: '32.2.1'
+  push:
+    tags:
+      - 'obs-*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build OBS Studio SDK (Windows x64)
+    runs-on: windows-2025
+    timeout-minutes: 45
+    env:
+      OBS_QT_VERSION: "6.11.0"
+      OBS_BUILD_DIR: C:\obs-studio\build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Qt
+        uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125 # v4.4.1
+        with:
+          version: ${{ env.OBS_QT_VERSION }}
+          arch: win64_msvc2022_64
+          modules: "qtnetworkauth qtwebsockets"
+          aqtsource: git+https://github.com/miurahr/aqtinstall.git@8c3695d4a4e1ceabf6a74dc6c79681656dc6b74b
+          cache: true
+
+      - name: Setup MSVC environment
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        with:
+          arch: x64
+
+      - name: Select complete Windows SDK
+        id: windows-sdk
+        shell: pwsh
+        run: |
+          $libRoot = 'C:\Program Files (x86)\Windows Kits\10\Lib'
+          $includeRoot = 'C:\Program Files (x86)\Windows Kits\10\Include'
+          $minimum = [version]'10.0.20348.0'
+          $sdk = Get-ChildItem $libRoot -Directory | Where-Object {
+            $parsed = $null
+            [version]::TryParse($_.Name, [ref]$parsed) -and
+              $parsed -ge $minimum -and
+              (Test-Path (Join-Path $_.FullName 'um')) -and
+              (Test-Path (Join-Path (Join-Path $includeRoot $_.Name) 'um'))
+          } | Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+          if (-not $sdk) { throw 'No complete Windows SDK 10.0.20348.0 or newer was found.' }
+          "OBS_WINDOWS_SDK_VERSION=$($sdk.Name)" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Clone OBS Studio
+        shell: pwsh
+        run: git clone --recursive --shallow-submodules --depth 1 --branch "${{ inputs.obs_version }}" https://github.com/obsproject/obs-studio.git C:\obs-studio
+
+      - name: Build OBS Studio SDK
+        shell: pwsh
+        run: |
+          cmake -S C:\obs-studio -B "$env:OBS_BUILD_DIR" `
+            -G "Visual Studio 18 2026" -A x64 `
+            -DCMAKE_SYSTEM_VERSION:STRING="$env:OBS_WINDOWS_SDK_VERSION" `
+            -DCMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION:STRING="$env:OBS_WINDOWS_SDK_VERSION" `
+            -DOBS_PARENT_ARCHITECTURE:STRING=x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build "$env:OBS_BUILD_DIR" --config Release --parallel 4 --target libobs obs-frontend-api
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Compress SDK
+        shell: pwsh
+        run: |
+          Compress-Archive -Path C:\obs-studio\* -DestinationPath C:\obs-sdk-win64.zip -CompressionLevel Optimal
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: obs-${{ inputs.obs_version }}
+          name: OBS Studio ${{ inputs.obs_version }} SDK (Windows x64)
+          files: C:\obs-sdk-win64.zip
+          draft: false
+          prerelease: false

@@ -1,0 +1,68 @@
+name: Build OpenCV
+on:
+  workflow_dispatch:
+    inputs:
+      opencv_version:
+        description: 'OpenCV Version Tag (e.g., 4.10.0)'
+        required: true
+        default: '4.10.0'
+  push:
+    tags:
+      - 'opencv-*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    name: Build OpenCV (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      OPENCV_DIR: ${{ github.workspace }}/.opencv
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build pkg-config libgl-dev \
+            libavformat-dev libavcodec-dev libavutil-dev libswresample-dev libswscale-dev
+
+      - name: Download OpenCV
+        run: |
+          src="$RUNNER_TEMP/opencv"
+          mkdir -p "$src"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/opencv.tar.gz" "https://github.com/opencv/opencv/archive/refs/tags/${{ inputs.opencv_version }}.tar.gz"
+          tar -xzf "$RUNNER_TEMP/opencv.tar.gz" -C "$src" --strip-components=1
+          echo "OPENCV_SRC=$src" >> "$GITHUB_ENV"
+
+      - name: Build OpenCV
+        run: |
+          cmake -S "$OPENCV_SRC" -B "$RUNNER_TEMP/opencv-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$OPENCV_DIR" \
+            -DBUILD_LIST=core,imgproc,dnn,objdetect \
+            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_TESTS=OFF -DBUILD_PERF_TESTS=OFF -DBUILD_EXAMPLES=OFF \
+            -DBUILD_DOCS=OFF -DBUILD_JAVA=OFF \
+            -DBUILD_opencv_apps=OFF -DBUILD_opencv_python3=OFF \
+            -DWITH_IPP=OFF -DWITH_OPENCL=OFF -DWITH_ADE=OFF -DWITH_FFMPEG=OFF \
+            -DWITH_GTK=OFF -DWITH_ITT=OFF -DWITH_EIGEN=OFF -DWITH_LAPACK=OFF \
+            -DOPENCV_GENERATE_PKGCONFIG=OFF
+          cmake --build "$RUNNER_TEMP/opencv-build" --target install
+
+      - name: Compress OpenCV
+        run: |
+          tar -czvf opencv-${{ inputs.opencv_version }}-linux.tar.gz -C "$OPENCV_DIR" .
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: opencv-${{ inputs.opencv_version }}
+          name: OpenCV ${{ inputs.opencv_version }} (Linux)
+          files: opencv-${{ inputs.opencv_version }}-linux.tar.gz
+          draft: false
+          prerelease: false
