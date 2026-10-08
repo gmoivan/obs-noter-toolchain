@@ -24,6 +24,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Determine OpenCV version
+        run: |
+          if [ -n "${{ inputs.opencv_version }}" ]; then
+            version="${{ inputs.opencv_version }}"
+          else
+            version="${GITHUB_REF_NAME#opencv-}"
+          fi
+          echo "OPENCV_VERSION=$version" >> "$GITHUB_ENV"
+
       - name: Install native dependencies
         run: |
           sudo apt-get update
@@ -35,7 +44,7 @@ jobs:
         run: |
           src="$RUNNER_TEMP/opencv"
           mkdir -p "$src"
-          curl -fsSL --retry 3 -o "$RUNNER_TEMP/opencv.tar.gz" "https://github.com/opencv/opencv/archive/refs/tags/${{ inputs.opencv_version }}.tar.gz"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/opencv.tar.gz" "https://github.com/opencv/opencv/archive/refs/tags/${OPENCV_VERSION}.tar.gz"
           tar -xzf "$RUNNER_TEMP/opencv.tar.gz" -C "$src" --strip-components=1
           echo "OPENCV_SRC=$src" >> "$GITHUB_ENV"
 
@@ -56,13 +65,37 @@ jobs:
 
       - name: Compress OpenCV
         run: |
-          tar -czvf opencv-${{ inputs.opencv_version }}-linux.tar.gz -C "$OPENCV_DIR" .
+          tar -czvf "opencv-${OPENCV_VERSION}-linux.tar.gz" -C "$OPENCV_DIR" .
 
-      - name: Release
-        uses: softprops/action-gh-release@v2
+      - name: Upload OpenCV as artifact
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: opencv-${{ inputs.opencv_version }}
-          name: OpenCV ${{ inputs.opencv_version }} (Linux)
-          files: opencv-${{ inputs.opencv_version }}-linux.tar.gz
-          draft: false
-          prerelease: false
+          name: opencv-${{ env.OPENCV_VERSION }}-linux
+          path: opencv-${{ env.OPENCV_VERSION }}-linux.tar.gz
+
+      - name: Create GitHub release and upload asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="opencv-${OPENCV_VERSION}"
+          name="OpenCV ${OPENCV_VERSION} (Linux)"
+          archive="opencv-${OPENCV_VERSION}-linux.tar.gz"
+
+          for i in {1..5}; do
+            if gh release view "$tag" >/dev/null 2>&1; then
+              if gh release upload "$tag" "$archive" --clobber; then
+                exit 0
+              fi
+            else
+              if gh release create "$tag" "$archive" \
+                --title "$name" \
+                --notes "Linux x64 build for OpenCV ${OPENCV_VERSION}"; then
+                exit 0
+              fi
+            fi
+            if [ "$i" -eq 5 ]; then
+              echo "Failed to create or upload release after 5 attempts"
+              exit 1
+            fi
+            sleep $((5 * i))
+          done
