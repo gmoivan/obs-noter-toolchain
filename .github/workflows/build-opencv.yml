@@ -141,17 +141,32 @@ jobs:
         run: |
           $installDir = "$env:RUNNER_TEMP\opencv-install"
           $buildDir = "$env:RUNNER_TEMP\opencv-build"
-          cmake -S "$env:OPENCV_SRC" -B "$buildDir" -G Ninja `
-            -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_INSTALL_PREFIX="$installDir" `
-            -DBUILD_LIST=core,imgproc,dnn,objdetect `
-            -DBUILD_SHARED_LIBS=ON `
-            -DBUILD_TESTS=OFF -DBUILD_PERF_TESTS=OFF -DBUILD_EXAMPLES=OFF `
-            -DBUILD_DOCS=OFF -DBUILD_JAVA=OFF `
-            -DBUILD_opencv_apps=OFF -DBUILD_opencv_python3=OFF `
-            -DWITH_IPP=OFF -DWITH_OPENCL=OFF -DWITH_ADE=OFF -DWITH_FFMPEG=OFF `
-            -DWITH_GTK=OFF -DWITH_ITT=OFF -DWITH_EIGEN=OFF -DWITH_LAPACK=OFF `
-            -DOPENCV_GENERATE_PKGCONFIG=OFF
+          $cmakeArgs = @(
+            "-S", $env:OPENCV_SRC,
+            "-B", $buildDir,
+            "-G", "Ninja",
+            "-DCMAKE_BUILD_TYPE=Release",
+            "-DCMAKE_INSTALL_PREFIX=$installDir",
+            "-DBUILD_LIST=core,imgproc,dnn,objdetect",
+            "-DBUILD_SHARED_LIBS=ON",
+            "-DBUILD_TESTS=OFF",
+            "-DBUILD_PERF_TESTS=OFF",
+            "-DBUILD_EXAMPLES=OFF",
+            "-DBUILD_DOCS=OFF",
+            "-DBUILD_JAVA=OFF",
+            "-DBUILD_opencv_apps=OFF",
+            "-DBUILD_opencv_python3=OFF",
+            "-DWITH_IPP=OFF",
+            "-DWITH_OPENCL=OFF",
+            "-DWITH_ADE=OFF",
+            "-DWITH_FFMPEG=OFF",
+            "-DWITH_GTK=OFF",
+            "-DWITH_ITT=OFF",
+            "-DWITH_EIGEN=OFF",
+            "-DWITH_LAPACK=OFF",
+            "-DOPENCV_GENERATE_PKGCONFIG=OFF"
+          )
+          cmake @cmakeArgs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cmake --build "$buildDir" --target install --config Release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
