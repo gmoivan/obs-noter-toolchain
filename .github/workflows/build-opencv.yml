@@ -22,7 +22,7 @@ jobs:
       OPENCV_DIR: ${{ github.workspace }}/.opencv
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Determine OpenCV version
         run: |
@@ -68,7 +68,7 @@ jobs:
           tar -czvf "opencv-${OPENCV_VERSION}-linux.tar.gz" -C "$OPENCV_DIR" .
 
       - name: Upload OpenCV as artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: opencv-${{ env.OPENCV_VERSION }}-linux
           path: opencv-${{ env.OPENCV_VERSION }}-linux.tar.gz
@@ -106,7 +106,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Determine OpenCV version
         shell: pwsh
@@ -179,7 +179,7 @@ jobs:
           Compress-Archive -Path "$env:OPENCV_INSTALL_DIR\*" -DestinationPath $archive -CompressionLevel Optimal
 
       - name: Upload OpenCV as artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: opencv-${{ env.OPENCV_VERSION }}-windows-x64
           path: opencv-${{ env.OPENCV_VERSION }}-windows-x64.zip
