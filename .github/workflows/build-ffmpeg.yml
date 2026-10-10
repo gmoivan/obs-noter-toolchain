@@ -20,7 +20,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Determine FFmpeg version
         shell: pwsh
@@ -91,7 +91,7 @@ jobs:
           Compress-Archive -Path "$env:FFMPEG_CLEAN_DIR\*" -DestinationPath $archive -CompressionLevel Optimal
 
       - name: Upload FFmpeg as artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ffmpeg-${{ env.FFMPEG_VERSION }}-windows-x64
           path: ffmpeg-${{ env.FFMPEG_VERSION }}-windows-x64.zip
