@@ -96,32 +96,28 @@ jobs:
           name: ffmpeg-${{ env.FFMPEG_VERSION }}-windows-x64
           path: ffmpeg-${{ env.FFMPEG_VERSION }}-windows-x64.zip
 
-      - name: Create or update GitHub release and upload asset
+      - name: Create GitHub release and upload asset
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "ffmpeg-$env:FFMPEG_VERSION"
-          $name = "FFmpeg $env:FFMPEG_VERSION"
+          $tag = "ffmpeg-$env:FFMPEG_VERSION-r$env:GITHUB_RUN_NUMBER"
+          $name = "FFmpeg $env:FFMPEG_VERSION r$env:GITHUB_RUN_NUMBER"
           $archive = "ffmpeg-$env:FFMPEG_VERSION-windows-x64.zip"
 
           for ($i = 1; $i -le 5; $i++) {
-            try {
-              $exists = $false
-              gh release view $tag 2>$null | Out-Null
-              if ($LASTEXITCODE -eq 0) {
-                $exists = $true
-              }
-              if ($exists) {
-                gh release upload $tag $archive --clobber
-              } else {
-                gh release create $tag $archive `
-                  --title $name `
-                  --notes "Prebuilt FFmpeg $env:FFMPEG_VERSION development libraries and runtime for Windows x64"
-              }
-              exit 0
-            } catch {
-              if ($i -eq 5) { throw }
-              Start-Sleep -Seconds (5 * $i)
+            gh release view $tag 2>$null | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+              gh release upload $tag $archive
+            } else {
+              gh release create $tag $archive `
+                --title $name `
+                --notes "Prebuilt FFmpeg $env:FFMPEG_VERSION development libraries and runtime for Windows x64"
             }
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            if ($i -eq 5) {
+              Write-Error "Failed to create or upload release after 5 attempts"
+              exit 1
+            }
+            Start-Sleep -Seconds (5 * $i)
           }
