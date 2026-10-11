@@ -28,3 +28,7 @@ El monorepo consume estos activos directamente a través de:
 - `.github/actions/setup-windows-native/` con el flag `enable_full_deps: true`
 - `.github/workflows/ci.yml`
 - `.github/workflows/release.yml`
+
+## Contribución y releases
+
+Ownership, flujo de cambios y contrato de release: [CONTRIBUTING.md](CONTRIBUTING.md).
