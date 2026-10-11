@@ -85,33 +85,55 @@ jobs:
           cmake --build "$env:OBS_BUILD_DIR" --config Release --parallel 4 --target libobs obs-frontend-api
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Compress SDK
+      - name: Package SDK
         shell: pwsh
         run: |
-          Compress-Archive -Path C:\obs-studio\* -DestinationPath C:\obs-sdk-win64.zip -CompressionLevel Optimal
+          $tag = "obs-$env:OBS_VERSION-r$env:GITHUB_RUN_NUMBER"
+          ./scripts/package-obs-sdk.ps1 -SourceDir C:\obs-studio -BuildDir "$env:OBS_BUILD_DIR" -Destination C:\obs-sdk
+          Compress-Archive -Path C:\obs-sdk\* -DestinationPath C:\obs-sdk-win64.zip -CompressionLevel Optimal
+          ./scripts/write-release-manifest.ps1 `
+            -Asset C:\obs-sdk-win64.zip `
+            -Dependency obs-studio-sdk `
+            -Version "$env:OBS_VERSION" `
+            -Tag $tag `
+            -UpstreamUrl https://github.com/obsproject/obs-studio.git `
+            -UpstreamRef "$env:OBS_VERSION" `
+            -UpstreamCommit (git -C C:\obs-studio rev-parse HEAD) `
+            -Parameters @(
+              "generator=Visual Studio 18 2026",
+              "arch=x64",
+              "config=Release",
+              "targets=libobs,obs-frontend-api",
+              "qt=$env:OBS_QT_VERSION",
+              "windowsSdk=$env:OBS_WINDOWS_SDK_VERSION"
+            )
+          "RELEASE_TAG=$tag" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Upload SDK as artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: obs-sdk-win64
-          path: C:\obs-sdk-win64.zip
+          path: |
+            C:\obs-sdk-win64.zip
+            C:\obs-sdk-win64.zip.manifest.json
 
       - name: Create GitHub release and upload asset
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "obs-$env:OBS_VERSION"
-          $name = "OBS Studio $env:OBS_VERSION SDK (Windows x64)"
-          $archive = "C:\obs-sdk-win64.zip"
+          $tag = $env:RELEASE_TAG
+          $name = "OBS Studio $env:OBS_VERSION SDK r$env:GITHUB_RUN_NUMBER (Windows x64)"
+          $assets = @("C:\obs-sdk-win64.zip", "C:\obs-sdk-win64.zip.manifest.json")
 
           for ($i = 1; $i -le 5; $i++) {
             gh release view $tag 2>$null | Out-Null
             if ($LASTEXITCODE -eq 0) {
-              gh release upload $tag $archive
+              gh release upload $tag @assets
             } else {
-              gh release create $tag $archive `
+              gh release create $tag @assets `
                 --title $name `
-                --notes "Windows x64 SDK for OBS Studio $env:OBS_VERSION"
+                --notes "Minimal Windows x64 SDK (libobs and obs-frontend-api headers and import libraries) for OBS Studio $env:OBS_VERSION"
             }
             if ($LASTEXITCODE -eq 0) { exit 0 }
             if ($i -eq 5) {

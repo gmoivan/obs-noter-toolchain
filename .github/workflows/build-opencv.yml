@@ -50,28 +50,52 @@ jobs:
 
       - name: Build OpenCV
         run: |
-          cmake -S "$OPENCV_SRC" -B "$RUNNER_TEMP/opencv-build" -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX="$OPENCV_DIR" \
-            -DBUILD_LIST=core,imgproc,dnn,objdetect \
-            -DBUILD_SHARED_LIBS=ON \
-            -DBUILD_TESTS=OFF -DBUILD_PERF_TESTS=OFF -DBUILD_EXAMPLES=OFF \
-            -DBUILD_DOCS=OFF -DBUILD_JAVA=OFF \
-            -DBUILD_opencv_apps=OFF -DBUILD_opencv_python3=OFF \
-            -DWITH_IPP=OFF -DWITH_OPENCL=OFF -DWITH_ADE=OFF -DWITH_FFMPEG=OFF \
-            -DWITH_GTK=OFF -DWITH_ITT=OFF -DWITH_EIGEN=OFF -DWITH_LAPACK=OFF \
+          cmake_args=(
+            -DCMAKE_BUILD_TYPE=Release
+            -DBUILD_LIST=core,imgproc,dnn,objdetect
+            -DBUILD_SHARED_LIBS=ON
+            -DBUILD_TESTS=OFF -DBUILD_PERF_TESTS=OFF -DBUILD_EXAMPLES=OFF
+            -DBUILD_DOCS=OFF -DBUILD_JAVA=OFF
+            -DBUILD_opencv_apps=OFF -DBUILD_opencv_python3=OFF
+            -DWITH_IPP=OFF -DWITH_OPENCL=OFF -DWITH_ADE=OFF -DWITH_FFMPEG=OFF
+            -DWITH_GTK=OFF -DWITH_ITT=OFF -DWITH_EIGEN=OFF -DWITH_LAPACK=OFF
             -DOPENCV_GENERATE_PKGCONFIG=OFF
+          )
+          cmake -S "$OPENCV_SRC" -B "$RUNNER_TEMP/opencv-build" -G Ninja \
+            -DCMAKE_INSTALL_PREFIX="$OPENCV_DIR" "${cmake_args[@]}"
           cmake --build "$RUNNER_TEMP/opencv-build" --target install
+          echo "OPENCV_CMAKE_ARGS=${cmake_args[*]}" >> "$GITHUB_ENV"
 
       - name: Compress OpenCV
         run: |
           tar -czvf "opencv-${OPENCV_VERSION}-linux.tar.gz" -C "$OPENCV_DIR" .
 
+      - name: Write release manifest
+        shell: pwsh
+        run: |
+          $ref = "refs/tags/$env:OPENCV_VERSION"
+          $refs = @(git ls-remote https://github.com/opencv/opencv.git $ref "$ref^{}")
+          $peeled = @($refs | Where-Object { $_ -like '*^{}' })
+          $line = @($peeled + $refs)[0]
+          if (-not $line) { throw "Upstream ref not found: $ref" }
+          ./scripts/write-release-manifest.ps1 `
+            -Asset "opencv-$env:OPENCV_VERSION-linux.tar.gz" `
+            -Dependency opencv `
+            -Version "$env:OPENCV_VERSION" `
+            -Tag "opencv-$env:OPENCV_VERSION-r$env:GITHUB_RUN_NUMBER" `
+            -UpstreamUrl https://github.com/opencv/opencv.git `
+            -UpstreamRef $ref `
+            -UpstreamCommit ($line -split '\s+')[0] `
+            -SourceArchive "$env:RUNNER_TEMP/opencv.tar.gz" `
+            -Parameters (@("platform=linux-x64", "generator=Ninja", "compiler=gcc") + ($env:OPENCV_CMAKE_ARGS -split ' '))
+
       - name: Upload OpenCV as artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: opencv-${{ env.OPENCV_VERSION }}-linux
-          path: opencv-${{ env.OPENCV_VERSION }}-linux.tar.gz
+          path: |
+            opencv-${{ env.OPENCV_VERSION }}-linux.tar.gz
+            opencv-${{ env.OPENCV_VERSION }}-linux.tar.gz.manifest.json
 
       - name: Create GitHub release and upload asset
         env:
@@ -80,14 +104,15 @@ jobs:
           tag="opencv-${OPENCV_VERSION}-r${GITHUB_RUN_NUMBER}"
           name="OpenCV ${OPENCV_VERSION} r${GITHUB_RUN_NUMBER}"
           archive="opencv-${OPENCV_VERSION}-linux.tar.gz"
+          manifest="${archive}.manifest.json"
 
           for i in {1..5}; do
             if gh release view "$tag" >/dev/null 2>&1; then
-              if gh release upload "$tag" "$archive"; then
+              if gh release upload "$tag" "$archive" "$manifest"; then
                 exit 0
               fi
             else
-              if gh release create "$tag" "$archive" \
+              if gh release create "$tag" "$archive" "$manifest" \
                 --title "$name" \
                 --notes "Linux x64 build for OpenCV ${OPENCV_VERSION}"; then
                 exit 0
@@ -171,6 +196,8 @@ jobs:
           cmake --build "$buildDir" --target install --config Release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           "OPENCV_INSTALL_DIR=$installDir" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          $recordedArgs = $cmakeArgs | Where-Object { $_ -like '-D*' -and $_ -notlike '-DCMAKE_INSTALL_PREFIX=*' }
+          "OPENCV_CMAKE_ARGS=$($recordedArgs -join ' ')" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Compress OpenCV
         shell: pwsh
@@ -178,11 +205,32 @@ jobs:
           $archive = "opencv-$env:OPENCV_VERSION-windows-x64.zip"
           Compress-Archive -Path "$env:OPENCV_INSTALL_DIR\*" -DestinationPath $archive -CompressionLevel Optimal
 
+      - name: Write release manifest
+        shell: pwsh
+        run: |
+          $ref = "refs/tags/$env:OPENCV_VERSION"
+          $refs = @(git ls-remote https://github.com/opencv/opencv.git $ref "$ref^{}")
+          $peeled = @($refs | Where-Object { $_ -like '*^{}' })
+          $line = @($peeled + $refs)[0]
+          if (-not $line) { throw "Upstream ref not found: $ref" }
+          ./scripts/write-release-manifest.ps1 `
+            -Asset "opencv-$env:OPENCV_VERSION-windows-x64.zip" `
+            -Dependency opencv `
+            -Version "$env:OPENCV_VERSION" `
+            -Tag "opencv-$env:OPENCV_VERSION-r$env:GITHUB_RUN_NUMBER" `
+            -UpstreamUrl https://github.com/opencv/opencv.git `
+            -UpstreamRef $ref `
+            -UpstreamCommit ($line -split '\s+')[0] `
+            -SourceArchive "$env:RUNNER_TEMP\opencv.zip" `
+            -Parameters (@("platform=windows-x64", "generator=Ninja", "compiler=msvc-x64") + ($env:OPENCV_CMAKE_ARGS -split ' '))
+
       - name: Upload OpenCV as artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: opencv-${{ env.OPENCV_VERSION }}-windows-x64
-          path: opencv-${{ env.OPENCV_VERSION }}-windows-x64.zip
+          path: |
+            opencv-${{ env.OPENCV_VERSION }}-windows-x64.zip
+            opencv-${{ env.OPENCV_VERSION }}-windows-x64.zip.manifest.json
 
       - name: Create GitHub release and upload asset
         shell: pwsh
@@ -192,13 +240,14 @@ jobs:
           $tag = "opencv-$env:OPENCV_VERSION-r$env:GITHUB_RUN_NUMBER"
           $name = "OpenCV $env:OPENCV_VERSION r$env:GITHUB_RUN_NUMBER"
           $archive = "opencv-$env:OPENCV_VERSION-windows-x64.zip"
+          $assets = @($archive, "$archive.manifest.json")
 
           for ($i = 1; $i -le 5; $i++) {
             gh release view $tag 2>$null | Out-Null
             if ($LASTEXITCODE -eq 0) {
-              gh release upload $tag $archive
+              gh release upload $tag @assets
             } else {
-              gh release create $tag $archive `
+              gh release create $tag @assets `
                 --title $name `
                 --notes "Prebuilt OpenCV $env:OPENCV_VERSION binaries"
             }
