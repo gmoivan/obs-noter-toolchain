@@ -1,4 +1,4 @@
-# Stages the minimal OBS Studio SDK consumed by the OBS-Noter plugin (and its Flera copy): libobs and
+# Stages the minimal OBS Studio SDK consumed by obs-noter: libobs and
 # obs-frontend-api headers, generated config headers and Release import
 # libraries. The layout mirrors the OBS source/build tree so consumers keep
 # using OBS_STUDIO_DIR=<root> and OBS_BUILD_DIR=<root>\build.
